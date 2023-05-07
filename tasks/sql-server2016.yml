@@ -1,0 +1,107 @@
+---
+- name: print out operating system
+  debug:
+    msg: "Ansible distribution {{ ansible_distribution }}"
+
+- name: check MS SQL service
+  win_service:
+      name: "SQL Server (MSSQLSERVER)"
+  register: mssql_service_check
+
+- name: check MS SQL service debug output
+  debug:
+    msg: "SQL Server (MSSQLSERVER) exists = {{mssql_service_check.exists}}"
+
+- name: create directory of C Windows Temp
+  win_file:
+    path: "{{ unzip_dest_path }}"
+    state: directory
+  when: not mssql_service_check.exists
+
+- name: create MS SQL CU directory inside of C Windows Temp
+  win_file:
+    path: "{{ mssql_PCUSOURCE }}"
+    state: directory
+  when: not mssql_service_check.exists
+
+- name: Download SQL Server 2016 Standard Edition Install Exe
+  win_get_url:
+    url: "{{ artifact_2016ee_url }}"
+    dest: "{{ iso_2016ee_dest_path }}"
+    validate_certs: no
+    timeout: 999
+    force: no
+  when: not mssql_service_check.exists
+
+- name: Mount SQL Server 2016 EE ISO
+  win_disk_image:
+    image_path: "{{ iso_2016ee_dest_path }}"
+    state: present
+  register: disk_image_out
+  when: not mssql_service_check.exists
+
+
+- name: Run the SQL Server 2016 Installer
+  win_shell: >
+    & "{{ disk_image_out.mount_path }}setup.exe" /Q /ACTION=Install /IACCEPTSQLSERVERLICENSETERMS /ENU
+    /FEATURES=SQLENGINE,CONN,BC
+    /AGTSVCSTARTUPTYPE=Manual
+    /BROWSERSVCSTARTUPTYPE=Disabled
+    /INSTANCEDIR="{{ mssql_instance_dir }}"
+    /INSTANCENAME=MSSQLSERVER
+    /INSTALLSQLDATADIR="{{ mssql_install_sql_data_dir }}"
+    /INSTALLSHAREDDIR="{{ mssql_install_shared_dir }}"
+    /INSTALLSHAREDWOWDIR="{{ mssql_install_shared_wow_dir }}"
+    /SQLCOLLATION=SQL_Latin1_General_CP1_CI_AS
+    /SQLSVCINSTANTFILEINIT=True
+    /SQLBACKUPDIR=M:\Backups\Backups
+    /SQLSYSADMINACCOUNTS="{{ win_admin_user }}" "{{ dba }}"
+    /SQLTEMPDBDIR=M:\TempDB\TempDB
+    /SQLTEMPDBLOGDIR=M:\TempDB\TempDB
+    /SQLTEMPDBFILECOUNT=4
+    /SQLTEMPDBFILESIZE=8192
+    /SQLTEMPDBFILEGROWTH=0
+    /SQLTEMPDBLOGFILESIZE=8192
+    /SQLTEMPDBLOGFILEGROWTH=0
+    /SQLUSERDBDIR=M:\DB\DB
+    /SQLUSERDBLOGDIR=M:\Logs\Logs
+  vars:
+    ansible_become: true
+    ansible_become_method: runas
+    ansible_become_user: '{{ env }}\{{ user }}'
+    ansible_become_password: "{{ passwd }}"
+  when: not mssql_service_check.exists
+
+- name: check MS SQL service
+  win_service:
+      name: "SQL Server (MSSQLSERVER)"
+  register: mssql_service_check
+
+- name: check MS SQL service debug output
+  debug:
+    msg: "SQL Server (MSSQLSERVER) exists = {{mssql_service_check.exists}}"
+
+- name: Set SQL Agent Service to log on as Local System
+  win_service:
+    name: "SQL Server Agent (MSSQLSERVER)"
+    start_mode: auto
+    state: restarted
+    username: LocalSystem
+
+- name: Unmount SQL 2016 EE ISO
+  win_disk_image:
+    image_path: "{{ iso_2016ee_dest_path }}"
+    state: absent
+  when: mssql_service_check.exists
+
+- name: Delete the SQL 2016 EE ISO now that it is installed
+  win_file:
+    path: "{{ iso_2016ee_dest_path }}"
+    state: absent
+  when: mssql_service_check.exists
+
+- name: Delete the  MS SQL CU directory inside of C Windows Temp
+  win_file:
+    path: "{{ mssql_PCUSOURCE }}"
+    state: absent
+  when: mssql_service_check.exists
