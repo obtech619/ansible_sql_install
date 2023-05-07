@@ -1,0 +1,101 @@
+---
+- name: Set Windows OS value
+  set_fact:
+    OS: "{{ ansible_distribution }}"
+
+- name: Print out operating system
+  debug:
+    msg: " OS is {{ OS }}"
+
+- name: set winos to 2012 if true, otherwise skip
+  set_fact:
+    winos: 2012
+  when:  OS == 'Microsoft Windows Server 2012 R2 Standard'
+
+- name: set winos to 2016 if true, otherwise skip
+  set_fact:
+    winos: 2016
+  when:  OS == 'Microsoft Windows Server 2016 Standard'
+
+
+- name: set winos to 2019 if true, otherwise skip
+  set_fact:
+    winos: 2019
+  when:  OS == 'Microsoft Windows Server 2019 Standard'
+
+
+- name: "Print {{ winos }} Value"
+  debug:
+    msg: "Windows Version is {{ winos }}"
+
+
+- name: Include vars per environment
+  include_vars: "{{ winos }}.yml"
+
+- name: Disable IPV6 from all Network Adapters
+  win_shell: Get-Netadapter | foreach { Disable-NetAdapterBinding -InterfaceAlias $_.Name -ComponentID ms_tcpip6 }
+
+
+- name: check MS SQL service
+  win_service:
+      name: "SQL Server (MSSQLSERVER)"
+  register: mssql_service_check
+
+- name: Clean the sxs directory under C Windows Temp, so that a fresh dir can be created after this
+  win_file:
+    path: "{{ unzip_dest_path }}/sxs"
+    state: absent
+  when: not mssql_service_check.exists
+
+- name: create sxs directory inside of C Windows Temp
+  win_file:
+    path: "{{ unzip_dest_path }}/sxs"
+    state: directory
+  when: not mssql_service_check.exists and winos == 2012
+
+
+- name: Download SQL Server Prerequisite .NET Framework
+  block:
+  - name: Download SQL Server Prerequisite .NET Framework artifactory fetch
+    win_get_url:
+      url: "{{ artifact_dot_net_3_5_url }}"
+      validate_certs: no
+      dest: "{{ dot_net_3_5_win_get_url_dest }}"
+      timeout: 90
+      force: no
+    async: 3600
+    poll: 0
+    register: dotnet_prereq_download
+    tags: download
+
+  - name: Wait for download to finish
+    async_status:
+      jid: "{{ dotnet_prereq_download.ansible_job_id }}"
+    register: job_result
+    until: job_result.finished
+    retries: 30
+    delay: 60
+    tags: download
+  vars:
+    ansible_winrm_read_timeout_sec: "{{ global_ansible_winrm_read_timeout }}"
+  when: not mssql_service_check.exists and winos == 2012
+
+- name: Unzip the sxs folder
+  win_unzip:
+    src: "{{ dot_net_install_path }}/2012sxs.zip"
+    dest: "{{ dot_net_install_path }}"
+  when: winos == 2012
+
+- name: Windows | Install .Net Framework Core
+  win_feature:
+    name: Net-Framework-Core
+    state: present
+    include_sub_features: no
+    include_management_tools: no
+    source: "{{ dot_net_file }}"
+  register: dotnet_state
+  when: not mssql_service_check.exists and winos == 2012
+
+- name: Reboot if .NET install requires it
+  win_reboot:
+  when: dotnet_state.changed == true
