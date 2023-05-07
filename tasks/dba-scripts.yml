@@ -1,0 +1,130 @@
+---
+
+- name: Create SQL Scripts dir
+  win_file:
+    path: "{{ sql_scripts_dir }}"
+    state: directory
+
+- name: Create SQL Scripts DBA-Only dir
+  win_file:
+    path: "{{ sql_dba_dir }}"
+    state: directory
+
+- name: Create DBA-Only Prod dir
+  win_file:
+    path: "{{ dba_dir_prod }}"
+    state: directory
+
+- name: Create DBA-Only NPe dir
+  win_file:
+    path: "{{ dba_dir_npe }}"
+    state: directory
+
+- name: Create DBA-Only DR dir
+  win_file:
+    path: "{{ dba_dir_dr }}"
+    state: directory
+
+
+- name: Create SQL Scripts directory for DB data files
+  win_file:
+    path: "{{ sql_scripts_db_dir }}"
+    state: directory
+
+- name: Create SQL Scripts directory for DB log files
+  win_file:
+    path: "{{ sql_scripts_log_dir }}"
+    state: directory
+
+- name: Check for previous SQL Scripts out file"
+  win_stat:
+    path: "{{ sql_scripts_dir }}/00_DBA_Database_Creation.out"
+  register: sql_scripts_out
+
+- name: debug sql_scripts_out
+  debug:
+    msg: "File 00_DBA_Database_Creation.out exists: {{ sql_scripts_out.stat.exists }}"
+
+- name: Download SQL DBA scripts
+  win_get_url:
+    url: "{{ artifactory_url }}/{{ item }}"
+    dest: "{{ sql_scripts_dir }}\\{{ item }}"
+    force: yes
+    validate_certs: no
+    timeout: 90
+  loop:
+    - 000_DBMaintenanceCreateDirectory.bat
+    - 001_DBA_Database_Creation.sql
+    - 002_DBMaintenanceSQLConfiguration.sql
+    - 003_DBMaitenanceCommonUSP.sql
+    - 004_DBMaintenanceSolution.sql
+    - 005_DBMaintenanceSolutionSchedules.sql
+    - 006_DBMaintenance_SecurityBaselineScrips_SQL2012_and_Above.sql
+    - 007_Audit_script_to_get_non_standard_sql_settings.sql
+  when: not sql_scripts_out.stat.exists
+
+- name: Download README.txt for DBA's
+  win_get_url:
+    url: "{{ artifactory_url }}/{{ item }}"
+    dest: "{{ sql_dba_dir }}\\{{ item }}"
+    force: yes
+    validate_certs: no
+    timeout: 90
+  loop:
+    - README.txt
+
+- name: Download DBA scripts for Prod
+  win_get_url:
+    url: "{{ artifactory_url }}/{{ item }}"
+    dest: "{{ dba_dir_prod }}\\{{ item }}"
+    force: yes
+    validate_certs: no
+    timeout: 90
+  loop:
+    - 000_DBMaintenanceExtractLoginsPROD.sql
+    - 001_EnableTDEProd.sql
+
+- name: Download DBA scripts for NPe
+  win_get_url:
+    url: "{{ artifactory_url }}/{{ item }}"
+    dest: "{{ dba_dir_npe }}\\{{ item }}"
+    force: yes
+    validate_certs: no
+    timeout: 90
+  loop:
+    - 000_DBMaintenanceExtractLoginsNPE.sql
+    - 001_EnableTDENPE.sql
+
+- name: Download DBA scripts for DR
+  win_get_url:
+    url: "{{ artifactory_url }}/{{ item }}"
+    dest: "{{ dba_dir_dr }}\\{{ item }}"
+    force: yes
+    validate_certs: no
+    timeout: 90
+  loop:
+    - 000_DBMaintenanceExtractLoginsDR.sql
+    - 001_DR_DBMaintenanceRestoreLoginsToDC2.sql
+    - 002_DR_DBMaintenanceSwapToDC1.sql
+    - 003_DR_DBMaintenanceSwapToDC2.sql 
+    - 004_EnableTDEDR.sql
+
+- name: Create DBMaintenance Directories
+  win_shell: "{{ sql_scripts_dir }}/000_DBMaintenanceCreateDirectory.bat"
+  args:
+    executable: cmd 
+
+
+- name: Run DB Creation and Hardening Scripts
+  win_command: "{{ item }}"
+  args:
+    chdir: "{{ sql_scripts_dir }}"
+  with_items:
+    - sqlcmd -E -i {{ sql_scripts_dir }}\001_DBA_Database_Creation.sql -o {{ sql_scripts_dir }}\001_DBA_Database_Creation.out
+    - sqlcmd -E -i {{ sql_scripts_dir }}\002_DBMaintenanceSQLConfiguration.sql -o {{ sql_scripts_dir }}\002_DBMaintenanceSQLConfiguration.out
+    - sqlcmd -E -i {{ sql_scripts_dir }}\003_DBMaitenanceCommonUSP.sql -o {{ sql_scripts_dir }}\003_DBMaitenanceCommonUSP.out
+    - sqlcmd -E -i {{ sql_scripts_dir }}\004_DBMaintenanceSolution.sql -o {{ sql_scripts_dir }}\004_DBMaintenanceSolution.out
+    - sqlcmd -E -i {{ sql_scripts_dir }}\005_DBMaintenanceSolutionSchedules.sql -o {{ sql_scripts_dir }}\005_DBMaintenanceSolutionSchedules.out
+    - sqlcmd -E -i {{ sql_scripts_dir }}\006_DBMaintenance_SecurityBaselineScrips_SQL2012_and_Above.sql -o {{ sql_scripts_dir }}\006_DBMaintenance_SecurityBaselineScrips_SQL2012_and_Above.out
+    - sqlcmd -E -i {{ sql_scripts_dir }}\007_Audit_script_to_get_non_standard_sql_settings.sql -o {{ sql_scripts_dir }}\007_Audit_script_to_get_non_standard_sql_settings.out
+  when: not sql_scripts_out.stat.exists
