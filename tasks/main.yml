@@ -1,0 +1,23 @@
+---
+
+- name: Apply common Windows prerequisites if running Windows 2012
+  include_tasks: prerequisites.yml
+
+- name: Install SQL 2016 Enterprise Edition
+  include_tasks: sql-server2016.yml
+  when: mssql_role_name == "sql-server2016"
+
+- name: Install SQL Server 2016 Standard Edition
+  include_tasks: sql-server2016-se.yml
+  when: mssql_role_name == "sql-server2016-se"
+
+- name: Install SQL Server 2019 Standard Edition
+  include_tasks: sql-server2019-se.yml
+  when: mssql_role_name == "sql-server2019-se"
+
+- name: Install SQL Server 2019 Enterprise Edition
+  include_tasks: sql-server2019.yml
+  when: mssql_role_name == "sql-server2019"
+
+- name: Install and run DBA scripts
+  include_tasks: dba-scripts.yml
